@@ -195,7 +195,7 @@ class FitRoomProvider implements AIProvider {
     return switch (category) {
       'upper_body' => 'upper',
       'lower_body' => 'lower',
-      'dresses' => 'full_set',
+      'full_body' => 'full_set',
       _ => 'upper',
     };
   }

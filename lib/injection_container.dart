@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import 'core/ai_providers/ai_provider_manager.dart';
 import 'core/network/network_info.dart';
+import 'core/services/credits_service.dart';
 import 'features/virtual_tryon/data/datasources/local_image_datasource.dart';
 import 'features/virtual_tryon/data/datasources/replicate_remote_datasource.dart';
 import 'features/virtual_tryon/data/repositories/tryon_repository_impl.dart';
@@ -33,6 +34,10 @@ Future<void> initializeDependencies() async {
   final aiProviderManager = AIProviderManager();
   await aiProviderManager.initialize(fitroomApiKey: fitroomApiKey);
   sl.registerLazySingleton(() => aiProviderManager);
+
+  // Credits Service
+  final creditsService = await CreditsService.getInstance();
+  sl.registerLazySingleton(() => creditsService);
 
   // Data sources (legacy - not used with FitRoom)
   sl.registerLazySingleton<ReplicateRemoteDataSource>(
@@ -65,6 +70,7 @@ Future<void> initializeDependencies() async {
     () => TryonBloc(
       selectUserImage: sl(),
       providerManager: sl(),
+      creditsService: sl(),
       imagePicker: sl(),
     ),
   );

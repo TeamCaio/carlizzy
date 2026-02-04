@@ -22,21 +22,23 @@ class SelectPersonPhotoEvent extends TryonEvent {
 /// Select a clothing image from gallery or camera
 class SelectClothingImageEvent extends TryonEvent {
   final ImageSource source;
+  final String category;
 
-  const SelectClothingImageEvent(this.source);
+  const SelectClothingImageEvent(this.source, {required this.category});
 
   @override
-  List<Object?> get props => [source];
+  List<Object?> get props => [source, category];
 }
 
 /// Set clothing image from URL (internet example)
 class SetClothingUrlEvent extends TryonEvent {
   final String url;
+  final String category;
 
-  const SetClothingUrlEvent(this.url);
+  const SetClothingUrlEvent(this.url, {required this.category});
 
   @override
-  List<Object?> get props => [url];
+  List<Object?> get props => [url, category];
 }
 
 /// Set person image from URL (sample image)
@@ -57,16 +59,6 @@ class SetPersonImagePathEvent extends TryonEvent {
 
   @override
   List<Object?> get props => [path];
-}
-
-/// Set the garment category
-class SetCategoryEvent extends TryonEvent {
-  final String category;
-
-  const SetCategoryEvent(this.category);
-
-  @override
-  List<Object?> get props => [category];
 }
 
 /// Change the AI provider
@@ -94,7 +86,12 @@ class ResetTryonEvent extends TryonEvent {
   const ResetTryonEvent();
 }
 
-/// Clear just the clothing selection
+/// Clear clothing selection for a specific category (or all if null)
 class ClearClothingEvent extends TryonEvent {
-  const ClearClothingEvent();
+  final String? category;
+
+  const ClearClothingEvent({this.category});
+
+  @override
+  List<Object?> get props => [category];
 }

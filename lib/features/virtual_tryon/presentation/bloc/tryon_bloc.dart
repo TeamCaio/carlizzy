@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../../../core/ai_providers/ai_provider.dart';
 import '../../../../core/ai_providers/ai_provider_manager.dart';
+import '../../../../core/services/credits_service.dart';
 import '../../../../core/services/recent_photos_service.dart';
 import '../../domain/entities/garment.dart';
 import '../../domain/entities/tryon_result.dart';
@@ -16,30 +17,31 @@ import 'tryon_state.dart';
 class TryonBloc extends Bloc<TryonEvent, TryonState> {
   final SelectUserImage selectUserImage;
   final AIProviderManager providerManager;
+  final CreditsService creditsService;
   final ImagePicker _imagePicker;
 
   // Current session state
   UserImage? _personImage;
   bool _isPersonUrl = false;
-  String? _clothingImage;
-  bool _isClothingUrl = false;
-  String _category = 'upper_body';
+  /// Map of category -> clothing selection (supports multiple items)
+  Map<String, ClothingSelection> _clothingItems = {};
 
   TryonBloc({
     required this.selectUserImage,
     required this.providerManager,
+    required this.creditsService,
     required ImagePicker imagePicker,
   })  : _imagePicker = imagePicker,
         super(TryonInitial(
           selectedProvider: providerManager.currentType,
           availableProviders: providerManager.availableProviders,
+          credits: creditsService.getCredits(),
         )) {
     on<SelectPersonPhotoEvent>(_onSelectPersonPhoto);
     on<SetPersonImageUrlEvent>(_onSetPersonImageUrl);
     on<SetPersonImagePathEvent>(_onSetPersonImagePath);
     on<SelectClothingImageEvent>(_onSelectClothingImage);
     on<SetClothingUrlEvent>(_onSetClothingUrl);
-    on<SetCategoryEvent>(_onSetCategory);
     on<ChangeProviderEvent>(_onChangeProvider);
     on<StartTryOnEvent>(_onStartTryOn);
     on<RetryTryOnEvent>(_onRetryTryOn);
@@ -113,8 +115,13 @@ class TryonBloc extends Bloc<TryonEvent, TryonState> {
       );
 
       if (pickedFile != null) {
-        _clothingImage = pickedFile.path;
-        _isClothingUrl = false;
+        // Handle dress vs top/bottom conflicts
+        _handleClothingConflicts(event.category);
+
+        _clothingItems[event.category] = ClothingSelection(
+          imagePath: pickedFile.path,
+          isUrl: false,
+        );
         _emitCurrentState(emit);
       }
     } catch (e) {
@@ -129,17 +136,28 @@ class TryonBloc extends Bloc<TryonEvent, TryonState> {
     SetClothingUrlEvent event,
     Emitter<TryonState> emit,
   ) {
-    _clothingImage = event.url;
-    _isClothingUrl = true;
+    // Handle dress vs top/bottom conflicts
+    _handleClothingConflicts(event.category);
+
+    _clothingItems[event.category] = ClothingSelection(
+      imagePath: event.url,
+      isUrl: true,
+    );
     _emitCurrentState(emit);
   }
 
-  void _onSetCategory(
-    SetCategoryEvent event,
-    Emitter<TryonState> emit,
-  ) {
-    _category = event.category;
-    _emitCurrentState(emit);
+  /// Handle conflicts between dress and top/bottom selections
+  /// - Selecting a dress clears any top or bottom
+  /// - Selecting a top or bottom clears any dress
+  void _handleClothingConflicts(String category) {
+    if (category == 'full_body') {
+      // Selecting dress: clear top and bottom
+      _clothingItems.remove('upper_body');
+      _clothingItems.remove('lower_body');
+    } else if (category == 'upper_body' || category == 'lower_body') {
+      // Selecting top or bottom: clear dress
+      _clothingItems.remove('full_body');
+    }
   }
 
   Future<void> _onChangeProvider(
@@ -154,70 +172,141 @@ class TryonBloc extends Bloc<TryonEvent, TryonState> {
     StartTryOnEvent event,
     Emitter<TryonState> emit,
   ) async {
-    if (_personImage == null || _clothingImage == null) {
+    if (_personImage == null || _clothingItems.isEmpty) {
       emit(const TryonErrorState(
-        message: 'Please select both a photo and clothing item',
+        message: 'Please select both a photo and at least one clothing item',
         canRetry: false,
       ));
       return;
     }
 
     final provider = providerManager.currentProvider;
+    final totalSteps = _clothingItems.length;
+    final categories = _clothingItems.keys.toList();
+
+    // Check if user has enough credits
+    final creditsNeeded = creditsService.creditsNeeded(totalSteps);
+    if (!creditsService.hasEnoughCredits(totalSteps)) {
+      emit(TryonErrorState(
+        message: 'Not enough credits. You need $creditsNeeded credits but have ${creditsService.getCredits()}.',
+        canRetry: false,
+      ));
+      return;
+    }
+
+    // Sort categories for consistent order: tops -> bottoms -> dresses -> shoes -> accessories
+    final categoryOrder = ['upper_body', 'lower_body', 'full_body', 'shoes', 'accessories'];
+    categories.sort((a, b) {
+      final aIndex = categoryOrder.indexOf(a);
+      final bIndex = categoryOrder.indexOf(b);
+      return aIndex.compareTo(bIndex);
+    });
 
     emit(ProcessingTryOnState(
       personImage: _personImage!,
-      clothingImage: _clothingImage!,
+      clothingItems: Map.from(_clothingItems),
       progress: 0.0,
       statusMessage: 'Starting ${provider.type.displayName}...',
       provider: provider.type,
+      currentStep: 1,
+      totalSteps: totalSteps,
+      currentCategory: categories.first,
     ));
 
     try {
-      // If person image is a URL, download it first
-      File personFile;
+      // Start with person image
+      File currentPersonFile;
       if (_isPersonUrl) {
         emit(ProcessingTryOnState(
           personImage: _personImage!,
-          clothingImage: _clothingImage!,
-          progress: 0.05,
+          clothingItems: Map.from(_clothingItems),
+          progress: 0.02,
           statusMessage: 'Downloading person image...',
           provider: provider.type,
+          currentStep: 1,
+          totalSteps: totalSteps,
+          currentCategory: categories.first,
         ));
-        personFile = await _downloadImage(_personImage!.path);
+        currentPersonFile = await _downloadImage(_personImage!.path);
       } else {
-        personFile = File(_personImage!.path);
+        currentPersonFile = File(_personImage!.path);
       }
 
-      final result = await provider.tryOn(
-        personImage: personFile,
-        garmentImage: _clothingImage!,
-        category: _category,
-        onProgress: (progress, status) {
+      String? lastResultUrl;
+
+      // Process each clothing item in sequence
+      for (int i = 0; i < categories.length; i++) {
+        final category = categories[i];
+        final clothing = _clothingItems[category]!;
+        final stepNum = i + 1;
+        final categoryName = _getCategoryDisplayName(category);
+
+        emit(ProcessingTryOnState(
+          personImage: _personImage!,
+          clothingItems: Map.from(_clothingItems),
+          progress: 0.0,
+          statusMessage: 'Adding $categoryName ($stepNum of $totalSteps)...',
+          provider: provider.type,
+          currentStep: stepNum,
+          totalSteps: totalSteps,
+          currentCategory: category,
+        ));
+
+        final result = await provider.tryOn(
+          personImage: currentPersonFile,
+          garmentImage: clothing.imagePath,
+          category: category,
+          onProgress: (progress, status) {
+            emit(ProcessingTryOnState(
+              personImage: _personImage!,
+              clothingItems: Map.from(_clothingItems),
+              progress: progress,
+              statusMessage: '$categoryName: $status',
+              provider: provider.type,
+              currentStep: stepNum,
+              totalSteps: totalSteps,
+              currentCategory: category,
+            ));
+          },
+        );
+
+        // Deduct credits for this article (10 credits per article)
+        await creditsService.deductCredits(1);
+
+        lastResultUrl = result.resultImageUrl;
+
+        // If there are more items, download the result to use as the next person image
+        if (i < categories.length - 1) {
           emit(ProcessingTryOnState(
             personImage: _personImage!,
-            clothingImage: _clothingImage!,
-            progress: progress,
-            statusMessage: status,
+            clothingItems: Map.from(_clothingItems),
+            progress: 0.95,
+            statusMessage: 'Preparing for next item...',
             provider: provider.type,
+            currentStep: stepNum,
+            totalSteps: totalSteps,
+            currentCategory: category,
           ));
-        },
-      );
+          currentPersonFile = await _downloadImage(result.resultImageUrl);
+        }
+      }
 
       emit(TryonSuccessState(
         result: TryonResult(
-          resultImageUrl: result.resultImageUrl,
+          resultImageUrl: lastResultUrl!,
           originalImage: _personImage!,
           garment: Garment(
-            imageUrl: _clothingImage!,
-            description: 'Try-on result',
-            category: _category,
+            imageUrl: _clothingItems.values.first.imagePath,
+            description: 'Outfit with ${_clothingItems.length} items',
+            category: categories.first,
             timestamp: DateTime.now(),
           ),
           createdAt: DateTime.now(),
         ),
         personImage: _personImage!,
-        clothingImage: _clothingImage!,
+        clothingItems: Map.from(_clothingItems),
         usedProvider: provider.type,
+        itemsProcessed: totalSteps,
       ));
     } catch (e) {
       emit(TryonErrorState(
@@ -225,6 +314,23 @@ class TryonBloc extends Bloc<TryonEvent, TryonState> {
         canRetry: true,
         lastProvider: provider.type,
       ));
+    }
+  }
+
+  String _getCategoryDisplayName(String category) {
+    switch (category) {
+      case 'upper_body':
+        return 'top';
+      case 'lower_body':
+        return 'bottom';
+      case 'full_body':
+        return 'dress';
+      case 'shoes':
+        return 'shoes';
+      case 'accessories':
+        return 'accessory';
+      default:
+        return category;
     }
   }
 
@@ -241,12 +347,11 @@ class TryonBloc extends Bloc<TryonEvent, TryonState> {
   ) {
     _personImage = null;
     _isPersonUrl = false;
-    _clothingImage = null;
-    _isClothingUrl = false;
-    _category = 'upper_body';
+    _clothingItems = {};
     emit(TryonInitial(
       selectedProvider: providerManager.currentType,
       availableProviders: providerManager.availableProviders,
+      credits: creditsService.getCredits(),
     ));
   }
 
@@ -254,33 +359,42 @@ class TryonBloc extends Bloc<TryonEvent, TryonState> {
     ClearClothingEvent event,
     Emitter<TryonState> emit,
   ) {
-    _clothingImage = null;
-    _isClothingUrl = false;
+    if (event.category != null) {
+      // Clear specific category
+      _clothingItems.remove(event.category);
+    } else {
+      // Clear all clothing
+      _clothingItems = {};
+    }
     _emitCurrentState(emit);
   }
 
   void _emitCurrentState(Emitter<TryonState> emit) {
+    final credits = creditsService.getCredits();
     if (_personImage == null) {
+      // No person selected - show initial state with any selected clothing
       emit(TryonInitial(
         selectedProvider: providerManager.currentType,
         availableProviders: providerManager.availableProviders,
+        credits: credits,
+        clothingItems: Map.from(_clothingItems),
       ));
-    } else if (_clothingImage == null) {
+    } else if (_clothingItems.isEmpty) {
       emit(PersonSelectedState(
         personImage: _personImage!,
         isPersonUrl: _isPersonUrl,
         selectedProvider: providerManager.currentType,
         availableProviders: providerManager.availableProviders,
+        credits: credits,
       ));
     } else {
       emit(TryonReadyState(
         personImage: _personImage!,
         isPersonUrl: _isPersonUrl,
-        clothingImage: _clothingImage!,
-        isClothingUrl: _isClothingUrl,
-        category: _category,
+        clothingItems: Map.from(_clothingItems),
         selectedProvider: providerManager.currentType,
         availableProviders: providerManager.availableProviders,
+        credits: credits,
       ));
     }
   }
