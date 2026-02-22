@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
 import '../../../../core/constants/theme_constants.dart';
 import '../../../../core/services/credits_service.dart';
+import '../../../../core/services/revenuecat_service.dart';
 
 class SubscriptionScreen extends StatefulWidget {
   final VoidCallback onComplete;
@@ -12,46 +14,84 @@ class SubscriptionScreen extends StatefulWidget {
 }
 
 class _SubscriptionScreenState extends State<SubscriptionScreen> {
-  String? _selectedPlan;
   bool _isLoading = false;
 
-  Future<void> _selectPlan(String plan) async {
-    setState(() {
-      _selectedPlan = plan;
+  @override
+  void initState() {
+    super.initState();
+    // Automatically show paywall on load
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showPaywall();
     });
   }
 
-  Future<void> _continueToPurchase() async {
-    if (_selectedPlan == null) return;
+  Future<void> _showPaywall() async {
+    final result = await RevenueCatService.presentPaywall();
 
-    if (mounted) {
-      setState(() => _isLoading = true);
-    }
-
-    try {
+    if (result == PaywallResult.purchased || result == PaywallResult.restored) {
+      // User subscribed - update local state
       final creditsService = await CreditsService.getInstance();
 
-      if (_selectedPlan == 'annual_trial') {
-        // Start free trial with annual subscription
-        final started = await creditsService.startFreeTrial();
-        if (!started) {
-          if (mounted) _showError('Free trial already used');
-          return;
-        }
-        await creditsService.setSubscriptionType('annual_trial');
-      } else if (_selectedPlan == 'annual') {
-        // TODO: Integrate with RevenueCat for actual purchase
-        await creditsService.setSubscriptionType('annual');
-        await creditsService.addCredits(CreditsService.annualCredits);
-      } else if (_selectedPlan == 'monthly') {
-        // TODO: Integrate with RevenueCat for actual purchase
-        await creditsService.setSubscriptionType('monthly');
-        await creditsService.addCredits(CreditsService.monthlyCredits);
+      // Check which plan they purchased
+      final hasSubscription = await RevenueCatService.hasActiveSubscription();
+      if (hasSubscription) {
+        await creditsService.setSubscriptionType('pro');
+        // Credits will be managed by RevenueCat entitlements
       }
 
       widget.onComplete();
+    } else if (result == PaywallResult.cancelled || result == PaywallResult.error) {
+      // User cancelled or error - show manual selection
+      if (mounted) {
+        setState(() {});
+      }
+    }
+  }
+
+  Future<void> _skipSubscription() async {
+    // Allow users to continue without subscribing (limited features)
+    widget.onComplete();
+  }
+
+  Future<void> _restorePurchases() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final customerInfo = await RevenueCatService.restorePurchases();
+
+      if (customerInfo != null &&
+          customerInfo.entitlements.active.containsKey(RevenueCatService.entitlementPro)) {
+        final creditsService = await CreditsService.getInstance();
+        await creditsService.setSubscriptionType('pro');
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Purchases restored!'),
+              backgroundColor: Color(0xFF10B981),
+            ),
+          );
+        }
+        widget.onComplete();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No purchases to restore'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
     } catch (e) {
-      if (mounted) _showError('Failed to process: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error restoring: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -59,82 +99,86 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
   }
 
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFFAF9F7),
       body: SafeArea(
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B7355)))
+            : Padding(
                 padding: const EdgeInsets.all(ThemeConstants.spacingLarge),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SizedBox(height: ThemeConstants.spacingLarge),
-                    // Header
-                    Text(
-                      'Choose Your Plan',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF4A3F35),
+                    const Spacer(flex: 2),
+                    // Logo
+                    Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF8B7355), Color(0xFFB8956E)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF8B7355).withOpacity(0.3),
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
                           ),
-                      textAlign: TextAlign.center,
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.auto_awesome,
+                        size: 50,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: ThemeConstants.spacingLarge),
+                    // Title
+                    const Text(
+                      'Unlock Muse',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF4A3F35),
+                      ),
                     ),
                     const SizedBox(height: ThemeConstants.spacingSmall),
                     Text(
-                      'Unlock the virtual fitting room',
+                      'Virtual try-on powered by AI',
                       style: TextStyle(
                         fontSize: 16,
                         color: ThemeConstants.textSecondaryColor,
                       ),
-                      textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: ThemeConstants.spacingXLarge),
-
-                    // Annual with Free Trial (Recommended)
-                    _PlanCard(
-                      title: 'Annual',
-                      subtitle: '7 day free trial',
-                      price: '\$49.99/year',
-                      isSelected: _selectedPlan == 'annual_trial',
-                      isRecommended: true,
-                      onTap: () => _selectPlan('annual_trial'),
-                    ),
-                    const SizedBox(height: ThemeConstants.spacingMedium),
-
-                    // Monthly
-                    _PlanCard(
-                      title: 'Monthly',
-                      price: '\$6.99/month',
-                      isSelected: _selectedPlan == 'monthly',
-                      onTap: () => _selectPlan('monthly'),
-                    ),
-                    const SizedBox(height: ThemeConstants.spacingXLarge),
-
-                    // Continue button
+                    // Features list
+                    _FeatureItem(icon: Icons.checkroom, text: 'Unlimited virtual try-ons'),
+                    const SizedBox(height: 12),
+                    _FeatureItem(icon: Icons.cloud_sync, text: 'Sync across devices'),
+                    const SizedBox(height: 12),
+                    _FeatureItem(icon: Icons.auto_awesome, text: 'AI-powered styling'),
+                    const Spacer(flex: 2),
+                    // Subscribe button
                     SizedBox(
+                      width: double.infinity,
                       height: 56,
                       child: ElevatedButton(
-                        onPressed: _selectedPlan != null ? _continueToPurchase : null,
+                        onPressed: _showPaywall,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF8B7355),
                           foregroundColor: Colors.white,
-                          disabledBackgroundColor: Colors.grey.shade300,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(ThemeConstants.radiusMedium),
+                            borderRadius: BorderRadius.circular(16),
                           ),
+                          elevation: 0,
                         ),
-                        child: Text(
-                          _selectedPlan == 'annual_trial'
-                              ? 'Start Free Trial'
-                              : 'Continue',
-                          style: const TextStyle(
+                        child: const Text(
+                          'View Plans',
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
@@ -142,18 +186,29 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       ),
                     ),
                     const SizedBox(height: ThemeConstants.spacingMedium),
-
-                    // Terms
-                    Text(
-                      _selectedPlan == 'annual_trial'
-                          ? '7 day free trial. Then \$49.99/year. Cancel anytime.'
-                          : 'Subscriptions auto-renew until cancelled.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: ThemeConstants.textHintColor,
+                    // Restore purchases
+                    TextButton(
+                      onPressed: _restorePurchases,
+                      child: const Text(
+                        'Restore Purchases',
+                        style: TextStyle(
+                          color: Color(0xFF8B7355),
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                      textAlign: TextAlign.center,
                     ),
+                    // Skip option
+                    TextButton(
+                      onPressed: _skipSubscription,
+                      child: Text(
+                        'Continue with limited features',
+                        style: TextStyle(
+                          color: ThemeConstants.textHintColor,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: ThemeConstants.spacingMedium),
                   ],
                 ),
               ),
@@ -162,105 +217,33 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 }
 
-class _PlanCard extends StatelessWidget {
-  final String title;
-  final String? subtitle;
-  final String price;
-  final bool isSelected;
-  final bool isRecommended;
-  final VoidCallback onTap;
+class _FeatureItem extends StatelessWidget {
+  final IconData icon;
+  final String text;
 
-  const _PlanCard({
-    required this.title,
-    this.subtitle,
-    required this.price,
-    required this.isSelected,
-    this.isRecommended = false,
-    required this.onTap,
-  });
+  const _FeatureItem({required this.icon, required this.text});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(ThemeConstants.spacingMedium),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF8B7355).withOpacity(0.1) : Colors.white,
-          borderRadius: BorderRadius.circular(ThemeConstants.radiusMedium),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF8B7355) : Colors.grey.shade300,
-            width: isSelected ? 2 : 1,
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF8B7355).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: const Color(0xFF8B7355), size: 20),
+        ),
+        const SizedBox(width: 14),
+        Text(
+          text,
+          style: const TextStyle(
+            fontSize: 16,
+            color: Color(0xFF4A3F35),
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (isRecommended) ...[
-              Align(
-                alignment: Alignment.centerRight,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF8B7355),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Text(
-                    'Recommended',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
-            Row(
-              children: [
-                Icon(
-                  isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-                  color: isSelected ? const Color(0xFF8B7355) : Colors.grey,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF4A3F35),
-                        ),
-                      ),
-                      if (subtitle != null)
-                        Text(
-                          subtitle!,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.green.shade700,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                Text(
-                  price,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF4A3F35),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 }
