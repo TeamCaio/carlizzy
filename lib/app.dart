@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/constants/theme_constants.dart';
@@ -10,8 +11,8 @@ import 'features/home/presentation/screens/home_screen.dart';
 import 'features/virtual_tryon/presentation/bloc/tryon_bloc.dart';
 import 'injection_container.dart';
 
-class WardrobeApp extends StatelessWidget {
-  const WardrobeApp({super.key});
+class MuseApp extends StatelessWidget {
+  const MuseApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +29,7 @@ class WardrobeApp extends StatelessWidget {
     return BlocProvider(
       create: (context) => sl<TryonBloc>(),
       child: MaterialApp(
-        title: 'Virtual Wardrobe',
+        title: 'Muse',
         debugShowCheckedModeBanner: false,
         theme: ThemeConstants.lightTheme,
         home: const _AuthWrapper(),
@@ -46,6 +47,7 @@ class _AuthWrapper extends StatefulWidget {
 
 class _AuthWrapperState extends State<_AuthWrapper> {
   static const String _hasSeenAuthKey = 'has_seen_auth';
+  static const String _hasRequestedPermissionsKey = 'has_requested_permissions';
   bool _isLoading = true;
   bool _showAuth = false;
 
@@ -55,9 +57,28 @@ class _AuthWrapperState extends State<_AuthWrapper> {
     _checkAuthState();
   }
 
+  Future<void> _requestPermissionsOnFirstLaunch() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hasRequested = prefs.getBool(_hasRequestedPermissionsKey) ?? false;
+
+    if (!hasRequested) {
+      // Request camera and photo permissions on first launch
+      await [
+        Permission.camera,
+        Permission.photos,
+        Permission.photosAddOnly,
+      ].request();
+
+      await prefs.setBool(_hasRequestedPermissionsKey, true);
+    }
+  }
+
   Future<void> _checkAuthState() async {
     final prefs = await SharedPreferences.getInstance();
     final hasSeenAuth = prefs.getBool(_hasSeenAuthKey) ?? false;
+
+    // Request permissions on first launch
+    await _requestPermissionsOnFirstLaunch();
 
     // Show auth screen if user hasn't seen it and isn't logged in
     if (!hasSeenAuth && !SupabaseService.isAuthenticated) {

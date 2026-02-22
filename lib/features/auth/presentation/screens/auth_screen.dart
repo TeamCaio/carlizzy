@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/theme_constants.dart';
+import '../../../../core/services/credits_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import 'subscription_screen.dart';
 
@@ -64,7 +65,7 @@ class _AuthScreenState extends State<AuthScreen> {
       );
 
       if (mounted) {
-        _navigateToSubscription();
+        await _navigateToSubscription();
       }
     } on SignInWithAppleAuthorizationException catch (e) {
       if (e.code != AuthorizationErrorCode.canceled) {
@@ -79,7 +80,19 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  void _navigateToSubscription() {
+  Future<void> _navigateToSubscription() async {
+    // Check if user already has a subscription
+    final creditsService = await CreditsService.getInstance();
+    final subscriptionType = creditsService.getSubscriptionType();
+
+    if (subscriptionType != null && subscriptionType.isNotEmpty) {
+      // User already has a subscription, skip to home
+      widget.onAuthSuccess();
+      return;
+    }
+
+    if (!mounted) return;
+
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (context) => SubscriptionScreen(
@@ -90,7 +103,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _continueWithoutAccount() async {
-    _navigateToSubscription();
+    await _navigateToSubscription();
   }
 
   @override
@@ -119,7 +132,7 @@ class _AuthScreenState extends State<AuthScreen> {
               const SizedBox(height: ThemeConstants.spacingLarge),
               // Title
               Text(
-                'Welcome to Wardrobe',
+                'Welcome to Muse',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
