@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
 import '../../../../core/constants/theme_constants.dart';
 import '../../../../core/services/credits_service.dart';
+import '../../../../core/services/revenuecat_service.dart';
+import '../../../../core/services/saved_outfits_service.dart';
 import '../../../../core/services/supabase_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -71,6 +74,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (confirm == true) {
       await SupabaseService.client.auth.signOut();
+      // Reset singleton services to clear cached data
+      CreditsService.reset();
+      SavedOutfitsService.reset();
       if (mounted) {
         Navigator.of(context).pop();
         widget.onLogout?.call();
@@ -78,79 +84,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _showCreditPacksSheet() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(ThemeConstants.spacingLarge),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: ThemeConstants.spacingLarge),
-              const Text(
-                'Buy Credits',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF4A3F35),
-                ),
-              ),
-              const SizedBox(height: ThemeConstants.spacingMedium),
-              Row(
-                children: [
-                  Expanded(
-                    child: _CreditPackOption(
-                      credits: 25,
-                      price: '\$2.99',
-                      onTap: () async {
-                        Navigator.pop(context);
-                        // TODO: Integrate with RevenueCat
-                        final service = await CreditsService.getInstance();
-                        await service.addCredits(CreditsService.smallPackCredits);
-                        _loadData();
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: ThemeConstants.spacingMedium),
-                  Expanded(
-                    child: _CreditPackOption(
-                      credits: 60,
-                      price: '\$5.99',
-                      onTap: () async {
-                        Navigator.pop(context);
-                        // TODO: Integrate with RevenueCat
-                        final service = await CreditsService.getInstance();
-                        await service.addCredits(CreditsService.mediumPackCredits);
-                        _loadData();
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: ThemeConstants.spacingMedium),
-            ],
+  Future<void> _showCreditPacksSheet() async {
+    // Use RevenueCat paywall UI
+    final result = await RevenueCatService.presentPaywall();
+
+    if (result == PaywallResult.purchased || result == PaywallResult.restored) {
+      // Refresh subscription status
+      _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Purchase successful!'),
+            backgroundColor: Color(0xFF10B981),
           ),
-        ),
-      ),
-    );
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F6F4),
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -185,9 +140,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(ThemeConstants.spacingLarge),
-        child: Column(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.white,
+              Color(0xFFE8D5C4), // Warm brown
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(ThemeConstants.spacingLarge),
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Account Section
@@ -198,11 +165,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _SettingsTile(
                   icon: Icons.person_outline,
                   title: 'Email',
-                  trailing: Text(
-                    _userEmail ?? 'Not signed in',
-                    style: TextStyle(
-                      color: ThemeConstants.textSecondaryColor,
-                      fontSize: 14,
+                  trailing: Flexible(
+                    child: Text(
+                      _userEmail ?? 'Not signed in',
+                      style: TextStyle(
+                        color: ThemeConstants.textSecondaryColor,
+                        fontSize: 14,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                   ),
                 ),
@@ -357,6 +328,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: ThemeConstants.spacingMedium),
           ],
         ),
+          ),
+        ),
       ),
     );
   }
@@ -443,16 +416,23 @@ class _SettingsTile extends StatelessWidget {
               color: iconColor ?? const Color(0xFF4A3F35),
             ),
             const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: titleColor ?? const Color(0xFF4A3F35),
-                ),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 16,
+                color: titleColor ?? const Color(0xFF4A3F35),
               ),
             ),
-            if (trailing != null) trailing!,
+            if (trailing != null) ...[
+              const SizedBox(width: 12),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: trailing!,
+                ),
+              ),
+            ] else
+              const Spacer(),
             if (onTap != null && trailing == null)
               Icon(
                 Icons.chevron_right,
