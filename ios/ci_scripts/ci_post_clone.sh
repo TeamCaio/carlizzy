@@ -13,6 +13,9 @@ echo "Running flutter pub get..."
 cd "$CI_PRIMARY_REPOSITORY_PATH"
 flutter pub get
 
+echo "Precaching iOS artifacts..."
+flutter precache --ios
+
 echo "Installing CocoaPods dependencies..."
 cd "$CI_PRIMARY_REPOSITORY_PATH/ios"
 pod install
