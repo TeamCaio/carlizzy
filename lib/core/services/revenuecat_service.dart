@@ -4,10 +4,10 @@ import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
 
 /// Service for managing in-app purchases via RevenueCat
 class RevenueCatService {
-  static const String _apiKey = 'test_KOJxzMpUkUPSMmftrzGrBvOksth';
+  static const String _apiKey = 'appl_KeFkTnclXcXhFKOmfSmrV0OeypW';
 
   // Entitlement IDs
-  static const String entitlementPro = 'pro';
+  static const String entitlementPro = 'Muse Pro';
 
   // Product IDs (configure these in RevenueCat dashboard)
   static const String monthlyProductId = 'muse_monthly';
