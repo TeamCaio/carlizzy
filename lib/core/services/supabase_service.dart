@@ -7,6 +7,12 @@ class SupabaseService {
 
   static SupabaseClient get client => Supabase.instance.client;
 
+  /// Public anon key — safe to ship in the client.
+  static String get anonKey => _supabaseAnonKey;
+
+  /// Base URL for Supabase Edge Functions (e.g. "$base/fitroom").
+  static String get functionsBaseUrl => '$_supabaseUrl/functions/v1';
+
   static Future<void> initialize() async {
     await Supabase.initialize(
       url: _supabaseUrl,

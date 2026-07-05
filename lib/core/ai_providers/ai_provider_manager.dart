@@ -9,12 +9,18 @@ class AIProviderManager {
 
   AIProviderManager();
 
-  /// Initialize the FitRoom provider
-  Future<void> initialize({required String fitroomApiKey}) async {
-    if (fitroomApiKey.isNotEmpty) {
+  /// Initialize the FitRoom provider. Traffic is routed through the Supabase
+  /// Edge Function (which holds the FitRoom key); the app only needs the
+  /// Supabase function URL + public anon key.
+  Future<void> initialize({
+    required String functionUrl,
+    required String anonKey,
+  }) async {
+    if (functionUrl.isNotEmpty && anonKey.isNotEmpty) {
       _provider = FitRoomProvider(
         dio: Dio(),
-        apiKey: fitroomApiKey,
+        functionUrl: functionUrl,
+        anonKey: anonKey,
       );
     }
   }

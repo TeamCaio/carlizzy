@@ -7,22 +7,26 @@ import 'ai_provider.dart';
 /// API Documentation: https://developer.fitroom.app/
 class FitRoomProvider implements AIProvider {
   final Dio _dio;
-  final String _apiKey;
-
-  static const String _baseUrl = 'https://platform.fitroom.app';
-  static const String _tryOnEndpoint = '/api/tryon/v2/tasks';
+  final String _functionUrl;
+  final String _anonKey;
 
   FitRoomProvider({
     required Dio dio,
-    required String apiKey,
+    required String functionUrl,
+    required String anonKey,
   })  : _dio = dio,
-        _apiKey = apiKey {
+        _functionUrl = functionUrl,
+        _anonKey = anonKey {
+    // All FitRoom traffic now goes through our Supabase Edge Function, which
+    // injects the FitRoom API key server-side. The app only carries the public
+    // Supabase anon key.
     _dio.options = BaseOptions(
-      baseUrl: _baseUrl,
+      baseUrl: _functionUrl,
       connectTimeout: const Duration(seconds: 30),
       receiveTimeout: const Duration(seconds: 180),
       headers: {
-        'X-API-KEY': _apiKey,
+        'Authorization': 'Bearer $_anonKey',
+        'apikey': _anonKey,
       },
     );
   }
@@ -32,7 +36,7 @@ class FitRoomProvider implements AIProvider {
 
   @override
   Future<bool> isConfigured() async {
-    return _apiKey.isNotEmpty;
+    return _functionUrl.isNotEmpty && _anonKey.isNotEmpty;
   }
 
   @override
@@ -108,9 +112,9 @@ class FitRoomProvider implements AIProvider {
 
       onProgress?.call(0.2, 'Uploading images...');
 
-      // Create try-on task
+      // Create try-on task (POST multipart to the Edge Function root)
       final response = await _dio.post(
-        _tryOnEndpoint,
+        '',
         data: formData,
         options: Options(
           contentType: 'multipart/form-data',
@@ -165,7 +169,7 @@ class FitRoomProvider implements AIProvider {
       final progress = 0.3 + (attempts / maxAttempts) * 0.6;
       onProgress?.call(progress, 'Generating... (${attempts * 2}s)');
 
-      final response = await _dio.get('$_tryOnEndpoint/$taskId');
+      final response = await _dio.get('', queryParameters: {'taskId': taskId});
 
       if (response.statusCode != 200) {
         throw Exception('Failed to get task status');

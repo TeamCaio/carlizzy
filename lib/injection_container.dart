@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'core/ai_providers/ai_provider_manager.dart';
 import 'core/network/network_info.dart';
 import 'core/services/credits_service.dart';
+import 'core/services/supabase_service.dart';
 import 'features/virtual_tryon/data/datasources/local_image_datasource.dart';
 import 'features/virtual_tryon/data/datasources/replicate_remote_datasource.dart';
 import 'features/virtual_tryon/data/repositories/tryon_repository_impl.dart';
@@ -18,8 +19,8 @@ import 'features/virtual_tryon/presentation/bloc/tryon_bloc.dart';
 final sl = GetIt.instance;
 
 Future<void> initializeDependencies() async {
-  // API Keys - In production, load from secure storage or environment
-  const String fitroomApiKey = '031e299385954981ae793998ecdc59621e5cf863c36f6abbd7f11698c36fb0aa';
+  // FitRoom is now proxied through a Supabase Edge Function that holds the key
+  // server-side; the client only uses the public Supabase anon key.
 
   // Core dependencies
   sl.registerLazySingleton(() => Dio());
@@ -30,9 +31,12 @@ Future<void> initializeDependencies() async {
     () => NetworkInfoImpl(sl()),
   );
 
-  // AI Provider Manager (FitRoom)
+  // AI Provider Manager (FitRoom via Supabase Edge Function)
   final aiProviderManager = AIProviderManager();
-  await aiProviderManager.initialize(fitroomApiKey: fitroomApiKey);
+  await aiProviderManager.initialize(
+    functionUrl: '${SupabaseService.functionsBaseUrl}/fitroom',
+    anonKey: SupabaseService.anonKey,
+  );
   sl.registerLazySingleton(() => aiProviderManager);
 
   // Credits Service

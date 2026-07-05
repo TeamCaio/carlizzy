@@ -5,17 +5,18 @@ set -e
 
 echo "Installing Flutter..."
 
-# Clone Flutter SDK
-git clone https://github.com/flutter/flutter.git --depth 1 -b stable "$HOME/flutter"
+# Clone Flutter SDK, pinned to the version used for local development so CI
+# resolves the same package/pod versions (the "stable" branch drifts over time).
+git clone https://github.com/flutter/flutter.git --depth 1 -b 3.38.9 "$HOME/flutter"
 export PATH="$PATH:$HOME/flutter/bin"
 
 echo "Creating .env file..."
 cd "$CI_PRIMARY_REPOSITORY_PATH"
-cat > .env << 'ENVEOF'
+cat > .env << ENVEOF
 # CJ Affiliate API
-CJ_API_TOKEN=t4hJM56wuY-QOK7YlWCsDf195A
-CJ_WEBSITE_ID=7526658
-CJ_COMPANY_ID=7865620
+CJ_API_TOKEN=${CJ_API_TOKEN}
+CJ_WEBSITE_ID=${CJ_WEBSITE_ID}
+CJ_COMPANY_ID=${CJ_COMPANY_ID}
 ENVEOF
 
 echo "Running flutter pub get..."
