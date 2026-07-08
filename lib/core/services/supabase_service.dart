@@ -2,8 +2,8 @@ import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseService {
-  static const String _supabaseUrl = 'https://qargimaraoeybgsytndr.supabase.co';
-  static const String _supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhcmdpbWFyYW9leWJnc3l0bmRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY1MzAxMDIsImV4cCI6MjA4MjEwNjEwMn0.YOH3Wu-oEwDBoORWsO8iJajcfLQYNrQ524GZXp-YWMU';
+  static const String _supabaseUrl = 'https://vsujdidvohngjhfwschi.supabase.co';
+  static const String _supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzdWpkaWR2b2huZ2poZndzY2hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MTk5MDksImV4cCI6MjA5OTA5NTkwOX0.kofoIg_tMtCnqB9ZhHpAA3Xuxqvwq35DCrfTB_3Eo3c';
 
   static SupabaseClient get client => Supabase.instance.client;
 
