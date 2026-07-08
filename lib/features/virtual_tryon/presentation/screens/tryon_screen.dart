@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -9,7 +10,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../../core/ai_providers/ai_provider.dart';
 import '../../../../core/constants/theme_constants.dart';
+import '../../../../core/services/credits_service.dart';
 import '../../../../core/services/saved_outfits_service.dart';
+import '../../../../core/services/watermark_service.dart';
 import '../bloc/tryon_bloc.dart';
 import '../bloc/tryon_event.dart';
 import '../bloc/tryon_state.dart';
@@ -2450,6 +2453,21 @@ class _ResultViewState extends State<_ResultView> {
   bool _isSavingToApp = false;
   bool _savedToPhotos = false;
   bool _savedToApp = false;
+  bool _isSubscribed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSubscriptionStatus();
+  }
+
+  Future<void> _loadSubscriptionStatus() async {
+    final creditsService = await CreditsService.getInstance();
+    final type = creditsService.getSubscriptionType();
+    if (mounted) {
+      setState(() => _isSubscribed = type != null && type.isNotEmpty);
+    }
+  }
 
   Future<void> _saveToPhotos() async {
     setState(() => _isSavingToPhotos = true);
@@ -2505,7 +2523,17 @@ class _ResultViewState extends State<_ResultView> {
       final dio = Dio();
       final tempDir = await getTemporaryDirectory();
       final filePath = '${tempDir.path}/outfit_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      await dio.download(widget.state.result.resultImageUrl, filePath);
+
+      if (_isSubscribed) {
+        await dio.download(widget.state.result.resultImageUrl, filePath);
+      } else {
+        final response = await dio.get<List<int>>(
+          widget.state.result.resultImageUrl,
+          options: Options(responseType: ResponseType.bytes),
+        );
+        final watermarked = await WatermarkService.apply(Uint8List.fromList(response.data!));
+        await File(filePath).writeAsBytes(watermarked);
+      }
 
       // Save to gallery
       final result = await ImageGallerySaver.saveFile(filePath);
@@ -2553,6 +2581,7 @@ class _ResultViewState extends State<_ResultView> {
       await service.saveOutfitFromUrl(
         widget.state.result.resultImageUrl,
         description: 'Outfit with ${widget.state.itemsProcessed} items',
+        watermark: !_isSubscribed,
       );
 
       if (mounted) {
@@ -2676,29 +2705,58 @@ class _ResultViewState extends State<_ResultView> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(20),
-                  child: CachedNetworkImage(
-                    imageUrl: widget.state.result.resultImageUrl,
-                    fit: BoxFit.contain,
-                    placeholder: (_, __) => Container(
-                      color: const Color(0xFFF5F5F5),
-                      child: const Center(
-                        child: CircularProgressIndicator(
-                          color: Color(0xFF8B7355),
+                  child: Stack(
+                    children: [
+                      CachedNetworkImage(
+                        imageUrl: widget.state.result.resultImageUrl,
+                        fit: BoxFit.contain,
+                        placeholder: (_, __) => Container(
+                          color: const Color(0xFFF5F5F5),
+                          child: const Center(
+                            child: CircularProgressIndicator(
+                              color: Color(0xFF8B7355),
+                            ),
+                          ),
+                        ),
+                        errorWidget: (_, __, ___) => Container(
+                          color: const Color(0xFFF5F5F5),
+                          child: const Center(
+                            child: Icon(Icons.broken_image_outlined, size: 48, color: Colors.grey),
+                          ),
                         ),
                       ),
-                    ),
-                    errorWidget: (_, __, ___) => Container(
-                      color: const Color(0xFFF5F5F5),
-                      child: const Center(
-                        child: Icon(Icons.broken_image_outlined, size: 48, color: Colors.grey),
-                      ),
-                    ),
+                      if (!_isSubscribed)
+                        Positioned.fill(
+                          child: Center(
+                            child: FractionallySizedBox(
+                              widthFactor: 0.4,
+                              child: Opacity(
+                                opacity: 0.35,
+                                child: Image.asset('assets/images/muse_logo.png'),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
         ),
+
+        if (!_isSubscribed)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Watermark will be removed with subscription',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: const Color(0xFF8B7355).withOpacity(0.8),
+              ),
+            ),
+          ),
 
         // Action buttons - two columns
         Padding(

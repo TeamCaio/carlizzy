@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'supabase_service.dart';
+import 'watermark_service.dart';
 
 const _uuid = Uuid();
 const String _cloudSyncEnabledKey = 'cloud_sync_enabled';
@@ -145,7 +147,11 @@ class SavedOutfitsService {
     return outfitsDir;
   }
 
-  Future<SavedOutfit> saveOutfitFromUrl(String imageUrl, {String? description}) async {
+  Future<SavedOutfit> saveOutfitFromUrl(
+    String imageUrl, {
+    String? description,
+    bool watermark = false,
+  }) async {
     final dio = Dio();
     final outfitsDir = await _getOutfitsDirectory();
     final id = _uuid.v4();
@@ -153,7 +159,16 @@ class SavedOutfitsService {
     final filePath = '${outfitsDir.path}/$fileName';
 
     // Download locally first
-    await dio.download(imageUrl, filePath);
+    if (watermark) {
+      final response = await dio.get<List<int>>(
+        imageUrl,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final watermarked = await WatermarkService.apply(Uint8List.fromList(response.data!));
+      await File(filePath).writeAsBytes(watermarked);
+    } else {
+      await dio.download(imageUrl, filePath);
+    }
 
     final outfit = SavedOutfit(
       id: id,
