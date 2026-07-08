@@ -5,8 +5,8 @@ import 'package:image/image.dart' as img;
 /// Composites the Muse logo as a centered, semi-transparent watermark onto
 /// try-on result images for users without an active subscription.
 class WatermarkService {
-  static const double _opacity = 0.35;
-  static const double _sizeFraction = 0.4;
+  static const double _opacity = 0.4;
+  static const double _sizeFraction = 0.5;
   static const String _logoAsset = 'assets/images/muse_logo.png';
 
   static Uint8List? _logoBytes;

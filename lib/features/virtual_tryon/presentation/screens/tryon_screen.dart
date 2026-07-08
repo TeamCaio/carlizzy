@@ -2729,9 +2729,9 @@ class _ResultViewState extends State<_ResultView> {
                         Positioned.fill(
                           child: Center(
                             child: FractionallySizedBox(
-                              widthFactor: 0.4,
+                              widthFactor: 0.5,
                               child: Opacity(
-                                opacity: 0.35,
+                                opacity: 0.4,
                                 child: Image.asset('assets/images/muse_logo.png'),
                               ),
                             ),
