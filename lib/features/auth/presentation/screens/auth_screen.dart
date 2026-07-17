@@ -8,12 +8,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/theme_constants.dart';
 import '../../../../core/services/credits_service.dart';
 import '../../../../core/services/supabase_service.dart';
-import 'subscription_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   final VoidCallback onAuthSuccess;
+  final VoidCallback onNeedsSubscription;
 
-  const AuthScreen({super.key, required this.onAuthSuccess});
+  const AuthScreen({
+    super.key,
+    required this.onAuthSuccess,
+    required this.onNeedsSubscription,
+  });
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -91,15 +95,7 @@ class _AuthScreenState extends State<AuthScreen> {
       return;
     }
 
-    if (!mounted) return;
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => SubscriptionScreen(
-          onComplete: widget.onAuthSuccess,
-        ),
-      ),
-    );
+    widget.onNeedsSubscription();
   }
 
   Future<void> _continueWithoutAccount() async {
