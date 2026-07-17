@@ -4,7 +4,7 @@ import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
 
 /// Service for managing in-app purchases via RevenueCat
 class RevenueCatService {
-  static const String _apiKey = 'appl_KeFkTnclXcXhFKOmfSmrV0OeypW';
+  static const String _apiKey = 'appl_KeFkTnclXcXhFKOmfSmrVOOeypW';
 
   // Entitlement IDs
   static const String entitlementPro = 'Muse Pro';
