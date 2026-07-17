@@ -28,12 +28,17 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   Future<void> _showPaywall() async {
     final result = await RevenueCatService.presentPaywall();
 
-    if (result == PaywallResult.purchased || result == PaywallResult.restored) {
+    // The paywall's own dismiss result can be unreliable (e.g. reports
+    // cancelled even after a completed purchase), so always verify the
+    // actual entitlement state rather than trusting `result` alone.
+    final hasSubscription = await RevenueCatService.hasActiveSubscription();
+
+    if (result == PaywallResult.purchased ||
+        result == PaywallResult.restored ||
+        hasSubscription) {
       // User subscribed - update local state
       final creditsService = await CreditsService.getInstance();
 
-      // Check which plan they purchased
-      final hasSubscription = await RevenueCatService.hasActiveSubscription();
       if (hasSubscription) {
         await creditsService.setSubscriptionType('pro');
         // Credits will be managed by RevenueCat entitlements
