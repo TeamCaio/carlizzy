@@ -109,7 +109,10 @@ class _AuthWrapperState extends State<_AuthWrapper> {
 
   void _onNeedsSubscription() {
     if (mounted) {
-      setState(() => _showSubscription = true);
+      setState(() {
+        _showAuth = false;
+        _showSubscription = true;
+      });
     }
   }
 
